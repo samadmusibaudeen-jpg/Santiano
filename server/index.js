@@ -47,7 +47,8 @@ async function handle(req, res) {
 if (require.main === module) {
   const server = http.createServer(handle);
   server.listen(cfg.port, () => {
-    console.log(`\n  ${cfg.shopName} shop running at http://localhost:${cfg.port}`);
+    console.log(`\n  ${cfg.shopName} shop running on port ${cfg.port}`);
+    console.log(`  Public address: ${cfg.publicUrl}${/localhost/.test(cfg.publicUrl) && process.env.NODE_ENV === 'production' ? '  <-- set PUBLIC_URL to your live address' : ''}`);
     console.log(`  Catalogue (Supabase): ${require('./supa').configured() ? cfg.supabaseUrl : 'NOT CONNECTED. Set SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY'}`);
     console.log(`  Payments: ${cfg.paystackKey ? 'Paystack' : 'DEMO (orders are marked paid without charging; set PAYSTACK_SECRET_KEY for real payments)'}\n`);
   });
