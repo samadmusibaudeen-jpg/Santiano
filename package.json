@@ -1,7 +1,7 @@
 {
   "name": "santiano-shop",
   "version": "1.0.0",
-  "description": "Santiano: online shop with a Supabase catalogue and admin page (zero dependencies, Node 22.13+)",
+  "description": "Santiano: online shop with a Supabase catalogue, Supabase database and admin page (Node 22.13+)",
   "main": "server/index.js",
   "engines": {
     "node": ">=22.13"
@@ -12,5 +12,8 @@
     "reset-admin": "node --disable-warning=ExperimentalWarning scripts/reset-admin.js",
     "test": "node --disable-warning=ExperimentalWarning scripts/e2e.js && node --disable-warning=ExperimentalWarning scripts/accounting-test.js"
   },
-  "license": "UNLICENSED"
+  "license": "UNLICENSED",
+  "dependencies": {
+    "pg": "^8.13.0"
+  }
 }

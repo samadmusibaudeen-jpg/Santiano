@@ -13,6 +13,8 @@ module.exports = {
   root,
   port: +env.PORT || 3000,
   secret: env.APP_SECRET || 'dev-secret-change-me',
+  // Set DATABASE_URL (Supabase: Settings > Database > Connection string) to keep users, orders and accounts in Supabase Postgres. Without it a local SQLite file is used.
+  databaseUrl: env.DATABASE_URL || '',
   dbPath: path.resolve(root, env.DB_PATH || './data/shop.db'),
   publicDir: path.join(root, 'public'),
   shopName: env.SHOP_NAME || 'Santiano',

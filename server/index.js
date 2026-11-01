@@ -2,7 +2,7 @@ const http = require('http');
 const path = require('path');
 const fs = require('fs');
 const cfg = require('./config');
-const { q } = require('./db');
+const db = require('./db');
 const { Router, HttpError, readBody, send, serveStatic, SECURITY_HEADERS } = require('./http');
 const { bootstrap } = require('./bootstrap');
 
@@ -12,11 +12,13 @@ require('./routes/market')(router);
 require('./routes/shop')(router);
 require('./routes/admin')(router);
 require('./routes/accounting')(router);
-bootstrap();
+const ready = db.ready.then(bootstrap);
+ready.catch(e => { console.error('[db] could not start:', e.message); process.exit(1); });
 
 async function handle(req, res) {
   const url = new URL(req.url, 'http://x');
   const pathname = url.pathname;
+  await ready;
   res.setHeader('X-Request-Start', Date.now());
   for (const [k, v] of Object.entries(SECURITY_HEADERS)) res.setHeader(k, v);
   try {
@@ -46,6 +48,7 @@ async function handle(req, res) {
 }
 if (require.main === module) {
   const server = http.createServer(handle);
+  ready.then(() => console.log(`  Database: ${db.kind === 'postgres' ? 'Supabase Postgres (permanent)' : 'local SQLite file (set DATABASE_URL to use Supabase)'}`));
   server.listen(cfg.port, () => {
     console.log(`\n  ${cfg.shopName} shop running on port ${cfg.port}`);
     console.log(`  Public address: ${cfg.publicUrl}${/localhost/.test(cfg.publicUrl) && process.env.NODE_ENV === 'production' ? '  <-- set PUBLIC_URL to your live address' : ''}`);

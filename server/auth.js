@@ -28,15 +28,15 @@ function verifyToken(token) {
   if (a.length !== b.length || !crypto.timingSafeEqual(a, b)) return null;
   try { const p = JSON.parse(Buffer.from(body, 'base64url').toString()); return p.exp > Date.now() / 1000 ? p : null; } catch { return null; }
 }
-function userFromReq(req) {
+async function userFromReq(req) {
   const h = req.headers.authorization || '';
   const p = verifyToken(h.startsWith('Bearer ') ? h.slice(7) : null);
   if (!p) return null;
-  const u = q.get('SELECT * FROM users WHERE id=?', p.uid);
+  const u = await q.get('SELECT * FROM users WHERE id=?', p.uid);
   return u && !u.suspended ? u : null;
 }
-const requireAuth = (...roles) => (ctx) => {
-  const u = userFromReq(ctx.req);
+const requireAuth = (...roles) => async (ctx) => {
+  const u = await userFromReq(ctx.req);
   if (!u) throw new HttpError(401, 'Please sign in');
   if (roles.length && !roles.includes(u.role)) throw new HttpError(403, 'You do not have access to this area');
   ctx.user = u;

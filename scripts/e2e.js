@@ -87,14 +87,14 @@ const ok = (c, m) => { if (c) { pass++; console.log('ok   ' + m); } else { fail+
 
   // --- paystack webhook path (signature + verified amount) ---
   const cfg = require('../server/config'), { q } = require('../server/db'); cfg.paystackKey = 'sk_test_webhook';
-  q.run("INSERT INTO orders(reference,customer_name,customer_phone,customer_email,method,address,subtotal,total) VALUES('SOWEBHOOK1','W','1','w@t.ng','delivery','x',1000,1000)");
-  const oid = q.get("SELECT id FROM orders WHERE reference='SOWEBHOOK1'").id; q.run('INSERT INTO order_items(order_id,product_id,name,qty,unit_price) VALUES(?,?,?,?,?)', oid, p1.id, 'Classic Black Sneakers', 1, 1000);
+  await q.run("INSERT INTO orders(reference,customer_name,customer_phone,customer_email,method,address,subtotal,total) VALUES('SOWEBHOOK1','W','1','w@t.ng','delivery','x',1000,1000)");
+  const oid = (await q.get("SELECT id FROM orders WHERE reference='SOWEBHOOK1'")).id; await q.run('INSERT INTO order_items(order_id,product_id,name,qty,unit_price) VALUES(?,?,?,?,?)', oid, p1.id, 'Classic Black Sneakers', 1, 1000);
   const mkEv = amount => { const raw = JSON.stringify({ event: 'charge.success', data: { reference: 'SOWEBHOOK1', status: 'success', amount, currency: 'NGN' } }); return [raw, crypto.createHmac('sha512', 'sk_test_webhook').update(raw).digest('hex')]; };
   let [raw, sig] = mkEv(100000);
   ok((await call('POST', '/api/webhooks/paystack', raw, null, { 'x-paystack-signature': 'bad' })).s === 401, 'webhook rejects a bad signature');
-  await call('POST', '/api/webhooks/paystack', mkEv(5)[0], null, { 'x-paystack-signature': mkEv(5)[1] }); ok(q.get('SELECT status FROM orders WHERE id=?', oid).status === 'pending_payment', 'webhook ignores a wrong amount');
+  await call('POST', '/api/webhooks/paystack', mkEv(5)[0], null, { 'x-paystack-signature': mkEv(5)[1] }); ok((await q.get('SELECT status FROM orders WHERE id=?', oid)).status === 'pending_payment', 'webhook ignores a wrong amount');
   await call('POST', '/api/webhooks/paystack', raw, null, { 'x-paystack-signature': sig }); await call('POST', '/api/webhooks/paystack', raw, null, { 'x-paystack-signature': sig });
-  ok(q.get('SELECT status FROM orders WHERE id=?', oid).status === 'paid', 'webhook marks the order paid');
+  ok((await q.get('SELECT status FROM orders WHERE id=?', oid)).status === 'paid', 'webhook marks the order paid');
   ok(mock.state.products.find(p => p.id === p1.id).stock_qty === 4, 'webhook replay does not take stock twice'); cfg.paystackKey = '';
 
   // --- editing and deleting products ---

@@ -50,15 +50,15 @@ function orderFigures(o, items, S, costs) {
   return { rev, disc, del, vat, total: o.total, net: r2(rev - disc + del), cogs: r2(cogs), fee: feeFor(o.total, S), lines, missing };
 }
 
-function buildJournal(S) {
+async function buildJournal(S) {
   const J = [], tdy = today();
   const add = (date, source, ref, memo, lines) => J.push({ date, source, ref, memo, lines: lines.filter(l => l[1] || l[2]).map(([a, dr, cr]) => ({ a, dr: r2(dr || 0), cr: r2(cr || 0) })) });
-  const costs = new Map(q.all('SELECT product_id, cost FROM product_costs').map(r => [r.product_id, r.cost]));
+  const costs = new Map((await q.all('SELECT product_id, cost FROM product_costs')).map(r => [r.product_id, r.cost]));
   const itemsBy = new Map();
-  for (const it of q.all('SELECT * FROM order_items WHERE order_id IN (SELECT id FROM orders WHERE paid_at IS NOT NULL)')) { if (!itemsBy.has(it.order_id)) itemsBy.set(it.order_id, []); itemsBy.get(it.order_id).push(it); }
-  const refundAt = new Map(q.all("SELECT detail, MAX(created_at) at FROM audit_log WHERE action='order.refund' GROUP BY detail").map(r => [r.detail, r.at]));
+  for (const it of await q.all('SELECT * FROM order_items WHERE order_id IN (SELECT id FROM orders WHERE paid_at IS NOT NULL)')) { if (!itemsBy.has(it.order_id)) itemsBy.set(it.order_id, []); itemsBy.get(it.order_id).push(it); }
+  const refundAt = new Map((await q.all("SELECT detail, MAX(created_at) ts FROM audit_log WHERE action='order.refund' GROUP BY detail")).map(r => [r.detail, r.ts]));
   const orders = [];
-  for (const o of q.all("SELECT * FROM orders WHERE paid_at IS NOT NULL AND status IN ('paid','processing','ready','dispatched','completed','refunded') ORDER BY id")) {
+  for (const o of await q.all("SELECT * FROM orders WHERE paid_at IS NOT NULL AND status IN ('paid','processing','ready','dispatched','completed','refunded') ORDER BY id")) {
     const f = orderFigures(o, itemsBy.get(o.id) || [], S, costs), d = wat(o.paid_at); orders.push({ o, f, date: d });
     add(d, 'sale', o.reference, `Sale ${o.reference}`, [[1000, o.total, 0], [4900, f.disc, 0], [4000, 0, f.rev], [4100, 0, f.del], [2000, 0, f.vat]]);
     if (f.fee) add(d, 'fee', o.reference, `Payment fee ${o.reference}`, [[5100, f.fee, 0], [1000, 0, f.fee]]);
@@ -69,11 +69,11 @@ function buildJournal(S) {
       if (f.cogs) add(rd, 'cogs', o.reference, `Stock returned ${o.reference}`, [[1100, f.cogs, 0], [5000, 0, f.cogs]]);
     }
   }
-  for (const e of q.all('SELECT * FROM expenses ORDER BY date, id')) {
+  for (const e of await q.all('SELECT * FROM expenses ORDER BY date, id')) {
     const c = EXP_CODE[e.category] || EXP_CODE.other;
     add(e.date, 'expense', 'EXP-' + e.id, `${EXP_CATS[e.category] || 'Other'}${e.description ? ': ' + e.description : ''}`, [[c, e.amount, 0], [1000, 0, e.amount]]);
   }
-  for (const m of q.all('SELECT * FROM money_entries ORDER BY date, id')) {
+  for (const m of await q.all('SELECT * FROM money_entries ORDER BY date, id')) {
     const ref = 'MON-' + m.id, memo = m.description || MONEY_KINDS[m.kind] || m.kind, a = m.amount;
     if (m.kind === 'capital') add(m.date, 'capital', ref, memo, [[1000, a, 0], [3000, 0, a]]);
     else if (m.kind === 'drawing') add(m.date, 'drawing', ref, memo, [[3100, a, 0], [1000, 0, a]]);
@@ -82,7 +82,7 @@ function buildJournal(S) {
     else if (m.kind === 'stock_purchase') add(m.date, 'stock', ref, memo, [[1100, a, 0], [1000, 0, a]]);
     else if (m.kind === 'opening_stock') add(m.date, 'opening', ref, memo, [[1100, a, 0], [3000, 0, a]]);
   }
-  const assets = q.all('SELECT * FROM fixed_assets ORDER BY purchase_date, id');
+  const assets = await q.all('SELECT * FROM fixed_assets ORDER BY purchase_date, id');
   for (const a of assets) {
     add(a.purchase_date, 'asset', 'AST-' + a.id, `Bought ${a.name}`, [[1500, a.cost, 0], [1000, 0, a.cost]]);
     const monthly = (a.cost - a.salvage) / (a.life_years * 12), months = Math.round(a.life_years * 12);
@@ -113,7 +113,7 @@ function resolvePeriod(query, S) {
 }
 
 async function compute(period) {
-  const S = settings(), { J, orders, costs } = buildJournal(S), { from, to } = period, tdy = today();
+  const S = settings(), { J, orders, costs } = await buildJournal(S), { from, to } = period, tdy = today();
   const P = J.filter(e => e.date >= from && e.date <= to), before = J.filter(e => e.date < from), upto = J.filter(e => e.date <= to);
 
   // ---- income statement ----

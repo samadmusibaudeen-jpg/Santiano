@@ -42,18 +42,18 @@ async function ensure() {
 const status = () => ({ configured: supa.configured(), loaded: cache.loaded, count: cache.rows.length, error: cache.error, last_refresh: cache.at ? new Date(cache.at).toISOString() : null });
 
 // ---------- shaping ----------
-const ratingMap = () => new Map(q.all('SELECT product_id id, ROUND(AVG(rating),1) avg, COUNT(*) n FROM reviews GROUP BY product_id').map(r => [r.id, r]));
-const soldMap = () => new Map(q.all(`SELECT oi.product_id id, SUM(oi.qty) n FROM order_items oi JOIN orders o ON o.id=oi.order_id WHERE o.status IN ${PAID} GROUP BY oi.product_id`).map(r => [r.id, r.n]));
+const ratingMap = async () => new Map((await q.all('SELECT product_id id, ROUND(AVG(rating),1) avg, COUNT(*) n FROM reviews GROUP BY product_id')).map(r => [r.id, r]));
+const soldMap = async () => new Map((await q.all(`SELECT oi.product_id id, SUM(oi.qty) n FROM order_items oi JOIN orders o ON o.id=oi.order_id WHERE o.status IN ${PAID} GROUP BY oi.product_id`)).map(r => [r.id, r.n]));
 const placeholder = id => `/api/placeholder/${id}.svg`;
 const inStock = p => p.active && p.price != null && (p.stock_qty == null || p.stock_qty > 0);
-function shape(p, ratings = ratingMap(), sold = soldMap()) {
+function shape(p, ratings, sold) { // ratings / sold come from await ratingMap() / await soldMap()
   const compare = p.compare_at != null && p.price != null && p.compare_at > p.price ? p.compare_at : null, rt = ratings.get(p.id);
   return { id: p.id, name: p.name, description: p.description, category: p.category, tags: p.tags, price: p.price, price_label: naira(p.price), compare_at: compare,
     discount_pct: compare ? Math.round((1 - p.price / compare) * 100) : 0, sizes: p.sizes, colours: p.colours, specs: p.specs, stock_qty: p.stock_qty, in_stock: inStock(p),
     images: p.images, image: p.images[0] || placeholder(p.id), created_at: p.created_at, rating_avg: rt ? rt.avg : null, rating_count: rt ? rt.n : 0, sold: sold.get(p.id) || 0 };
 }
 // For the admin: includes inactive items and raw stock.
-const shapeAdmin = (p, sold) => ({ ...shape(p, ratingMap(), sold || soldMap()), active: p.active, updated_at: p.updated_at });
+const shapeAdmin = (p, sold, ratings) => ({ ...shape(p, ratings, sold), active: p.active, updated_at: p.updated_at });
 
 // ---------- shopper queries (in memory) ----------
 const live = rows => rows.filter(p => p.active && p.price != null);

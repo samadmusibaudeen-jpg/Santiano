@@ -31,7 +31,7 @@ module.exports = (r) => {
 
   r.get('/api/admin/accounts/export', admin, async ctx => {
     const R = await A.compute(period(ctx)), T = A.tables(R), fmt = ctx.query.format || 'xlsx', shop = shopSettings().shop_name, stamp = `${R.period.from}_to_${R.period.to}`;
-    audit(ctx.user.id, 'accounts.export', `${fmt} ${ctx.query.table || 'all'} ${stamp}`);
+    await audit(ctx.user.id, 'accounts.export', `${fmt} ${ctx.query.table || 'all'} ${stamp}`);
     if (fmt === 'html') return ctx.raw(200, printable(R, ctx.query.table ? T.filter(t => t.key === ctx.query.table) : T.filter(t => ['income', 'balance', 'cashflow', 'trial', 'products', 'expenses', 'stock', 'ratios'].includes(t.key)), shop), { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' });
     if (fmt === 'csv') {
       const t = T.find(x => x.key === ctx.query.table); if (!t) throw new HttpError(400, 'Unknown report');
@@ -45,53 +45,53 @@ module.exports = (r) => {
   });
 
   // ---------- settings ----------
-  r.get('/api/admin/accounts/settings', admin, () => ({ ...A.settings(), defaults: A.DEFAULTS }));
-  r.put('/api/admin/accounts/settings', admin, ctx => {
+  r.get('/api/admin/accounts/settings', admin, async () => ({ ...A.settings(), defaults: A.DEFAULTS }));
+  r.put('/api/admin/accounts/settings', admin, async ctx => {
     const b = ctx.body, n = (k, min, max, name) => num(b[k], { min, max, name, required: true });
-    A.saveSettings({ vat_enabled: b.vat_enabled === true || b.vat_enabled === 'true', vat_rate: n('vat_rate', 0, 50, 'VAT rate'), income_tax_rate: n('income_tax_rate', 0, 60, 'Income tax rate'), fees_enabled: b.fees_enabled === true || b.fees_enabled === 'true',
+    await A.saveSettings({ vat_enabled: b.vat_enabled === true || b.vat_enabled === 'true', vat_rate: n('vat_rate', 0, 50, 'VAT rate'), income_tax_rate: n('income_tax_rate', 0, 60, 'Income tax rate'), fees_enabled: b.fees_enabled === true || b.fees_enabled === 'true',
       fee_percent: n('fee_percent', 0, 10, 'Fee percent'), fee_flat: n('fee_flat', 0, 10000, 'Flat fee'), fee_flat_over: n('fee_flat_over', 0, 1e7, 'Flat fee threshold'), fee_cap: n('fee_cap', 0, 1e6, 'Fee cap'), fy_start_month: Math.trunc(n('fy_start_month', 1, 12, 'Year start month')) });
-    audit(ctx.user.id, 'accounts.settings', ''); return { ok: true };
+    await audit(ctx.user.id, 'accounts.settings', ''); return { ok: true };
   });
 
   // ---------- expenses ----------
-  r.get('/api/admin/accounts/expenses', admin, ctx => { const p = period(ctx); return q.all('SELECT * FROM expenses WHERE date BETWEEN ? AND ? ORDER BY date DESC, id DESC LIMIT 500', p.from, p.to); });
-  r.post('/api/admin/accounts/expenses', admin, ctx => {
+  r.get('/api/admin/accounts/expenses', admin, async ctx => { const p = period(ctx); return await q.all('SELECT * FROM expenses WHERE date BETWEEN ? AND ? ORDER BY date DESC, id DESC LIMIT 500', p.from, p.to); });
+  r.post('/api/admin/accounts/expenses', admin, async ctx => {
     const b = ctx.body, cat = A.EXP_CATS[b.category] ? b.category : 'other', amount = num(b.amount, { min: 0.01, max: 1e10, name: 'Amount', required: true });
-    q.run('INSERT INTO expenses(date,category,description,vendor,amount) VALUES(?,?,?,?,?)', dateOr(b.date), cat, str(b.description, 200), str(b.vendor, 100), amount); audit(ctx.user.id, 'expense.add', `${cat} ${amount}`); return { ok: true };
+    await q.run('INSERT INTO expenses(date,category,description,vendor,amount) VALUES(?,?,?,?,?)', dateOr(b.date), cat, str(b.description, 200), str(b.vendor, 100), amount); await audit(ctx.user.id, 'expense.add', `${cat} ${amount}`); return { ok: true };
   });
-  r.delete('/api/admin/accounts/expenses/:id', admin, ctx => { q.run('DELETE FROM expenses WHERE id=?', +ctx.params.id); audit(ctx.user.id, 'expense.delete', ctx.params.id); return { ok: true }; });
+  r.delete('/api/admin/accounts/expenses/:id', admin, async ctx => { await q.run('DELETE FROM expenses WHERE id=?', +ctx.params.id); await audit(ctx.user.id, 'expense.delete', ctx.params.id); return { ok: true }; });
 
   // ---------- owner money, loans, stock bought ----------
-  r.get('/api/admin/accounts/money', admin, () => q.all('SELECT * FROM money_entries ORDER BY date DESC, id DESC LIMIT 500'));
-  r.post('/api/admin/accounts/money', admin, ctx => {
+  r.get('/api/admin/accounts/money', admin, async () => await q.all('SELECT * FROM money_entries ORDER BY date DESC, id DESC LIMIT 500'));
+  r.post('/api/admin/accounts/money', admin, async ctx => {
     const b = ctx.body; if (!A.MONEY_KINDS[b.kind]) throw new HttpError(400, 'Choose what this entry is');
     const amount = num(b.amount, { min: 0.01, max: 1e11, name: 'Amount', required: true });
-    q.run('INSERT INTO money_entries(date,kind,description,amount) VALUES(?,?,?,?)', dateOr(b.date), b.kind, str(b.description, 200), amount); audit(ctx.user.id, 'money.add', `${b.kind} ${amount}`); return { ok: true };
+    await q.run('INSERT INTO money_entries(date,kind,description,amount) VALUES(?,?,?,?)', dateOr(b.date), b.kind, str(b.description, 200), amount); await audit(ctx.user.id, 'money.add', `${b.kind} ${amount}`); return { ok: true };
   });
-  r.delete('/api/admin/accounts/money/:id', admin, ctx => { q.run('DELETE FROM money_entries WHERE id=?', +ctx.params.id); audit(ctx.user.id, 'money.delete', ctx.params.id); return { ok: true }; });
+  r.delete('/api/admin/accounts/money/:id', admin, async ctx => { await q.run('DELETE FROM money_entries WHERE id=?', +ctx.params.id); await audit(ctx.user.id, 'money.delete', ctx.params.id); return { ok: true }; });
 
   // ---------- equipment ----------
-  r.get('/api/admin/accounts/assets', admin, () => q.all('SELECT * FROM fixed_assets ORDER BY purchase_date DESC, id DESC'));
-  r.post('/api/admin/accounts/assets', admin, ctx => {
+  r.get('/api/admin/accounts/assets', admin, async () => await q.all('SELECT * FROM fixed_assets ORDER BY purchase_date DESC, id DESC'));
+  r.post('/api/admin/accounts/assets', admin, async ctx => {
     const b = ctx.body, cost = num(b.cost, { min: 1, max: 1e11, name: 'Cost', required: true }), life = num(b.life_years, { min: 0.5, max: 50, name: 'Useful life', required: true }), salvage = num(b.salvage, { min: 0, max: cost, name: 'Resale value' }) || 0;
-    q.run('INSERT INTO fixed_assets(name,cost,purchase_date,life_years,salvage) VALUES(?,?,?,?,?)', str(b.name, 100, { required: true, name: 'Name' }), cost, dateOr(b.purchase_date, 'Purchase date'), life, salvage); audit(ctx.user.id, 'asset.add', b.name); return { ok: true };
+    await q.run('INSERT INTO fixed_assets(name,cost,purchase_date,life_years,salvage) VALUES(?,?,?,?,?)', str(b.name, 100, { required: true, name: 'Name' }), cost, dateOr(b.purchase_date, 'Purchase date'), life, salvage); await audit(ctx.user.id, 'asset.add', b.name); return { ok: true };
   });
-  r.delete('/api/admin/accounts/assets/:id', admin, ctx => { q.run('DELETE FROM fixed_assets WHERE id=?', +ctx.params.id); audit(ctx.user.id, 'asset.delete', ctx.params.id); return { ok: true }; });
+  r.delete('/api/admin/accounts/assets/:id', admin, async ctx => { await q.run('DELETE FROM fixed_assets WHERE id=?', +ctx.params.id); await audit(ctx.user.id, 'asset.delete', ctx.params.id); return { ok: true }; });
 
   // ---------- cost prices ----------
   r.get('/api/admin/accounts/costs', admin, async ctx => {
-    const rows = (await catalog.ensure()).rows, costs = new Map(q.all('SELECT product_id, cost FROM product_costs').map(x => [x.product_id, x.cost]));
+    const rows = (await catalog.ensure()).rows, costs = new Map((await q.all('SELECT product_id, cost FROM product_costs')).map(x => [x.product_id, x.cost]));
     return rows.map(p => ({ id: p.id, name: p.name, category: p.category || '', price: p.price, stock_qty: p.stock_qty, cost: costs.has(p.id) ? costs.get(p.id) : null }));
   });
-  r.put('/api/admin/accounts/costs', admin, ctx => {
+  r.put('/api/admin/accounts/costs', admin, async ctx => {
     const list = Array.isArray(ctx.body.costs) ? ctx.body.costs.slice(0, 2000) : []; let n = 0;
-    q.tx(() => { for (const c of list) {
+    await q.tx(async () => { for (const c of list) {
       const id = Math.trunc(+c.product_id); if (!Number.isFinite(id)) continue;
-      if (c.cost === '' || c.cost == null) { q.run('DELETE FROM product_costs WHERE product_id=?', id); continue; }
+      if (c.cost === '' || c.cost == null) { await q.run('DELETE FROM product_costs WHERE product_id=?', id); continue; }
       const cost = num(c.cost, { min: 0, max: 1e10, name: 'Cost' });
-      q.run('INSERT INTO product_costs(product_id,cost,updated_at) VALUES(?,?,datetime(\'now\')) ON CONFLICT(product_id) DO UPDATE SET cost=excluded.cost, updated_at=excluded.updated_at', id, cost);
-      q.run('UPDATE order_items SET unit_cost=? WHERE product_id=? AND unit_cost IS NULL', cost, id); n++; // sales made before a cost existed get it once
+      await q.run('INSERT INTO product_costs(product_id,cost,updated_at) VALUES(?,?,datetime(\'now\')) ON CONFLICT(product_id) DO UPDATE SET cost=excluded.cost, updated_at=excluded.updated_at', id, cost);
+      await q.run('UPDATE order_items SET unit_cost=? WHERE product_id=? AND unit_cost IS NULL', cost, id); n++; // sales made before a cost existed get it once
     } });
-    audit(ctx.user.id, 'accounts.costs', `${n} updated`); return { ok: true, updated: n };
+    await audit(ctx.user.id, 'accounts.costs', `${n} updated`); return { ok: true, updated: n };
   });
 };

@@ -2,14 +2,15 @@
 
 An online shop (think Jumia or Temu, but yours): customers browse, add to cart and pay with Paystack. **You** add the products from an admin page, and they are stored in **Supabase**.
 
-Zero dependencies: Node.js 22.13+ (uses the built-in `node:sqlite` and `fetch`). No `npm install`.
+Node.js 22.13+. Run `npm install` once (it installs `pg`, the Postgres driver).
 
 ## Set up in 10 minutes
 
-1. **Supabase.** Create a project at supabase.com. Open **SQL Editor**, paste all of `sql/supabase.sql` and press **Run**. It creates the `products` table, a public `product-images` bucket for photos, and a stock function.
+1. **Supabase.** Create a project at supabase.com. Open **SQL Editor**, paste all of `sql/supabase.sql` and press **Run**. It creates the `products` table, a public `product-images` bucket for photos, a stock function, and the shop tables (users, orders, order items, reviews, discount codes, notifications, support requests, settings and the accounting tables).
 2. **Keys.** In Supabase go to **Settings → API** and copy the project URL and the **service_role** key.
-3. **Config.** `cp .env.example .env` and fill in `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `ADMIN_EMAIL`, `ADMIN_PASSWORD`, `APP_SECRET`.
-4. **Run.** `npm start`, then open http://localhost:3000. Sign in at **/admin-login.html** with your admin email (buyers use `/login.html`). Forgot it? Run `npm run reset-admin -- you@example.com "new-password"`.
+3. **Database URL.** In Supabase click **Connect**, choose **Session pooler**, and copy the connection string (replace `[YOUR-PASSWORD]` with your database password; if it has special characters such as `@` or `#`, URL-encode them). This is what keeps users and orders permanently in Supabase.
+4. **Config.** `npm install`, then `cp .env.example .env` and fill in `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `DATABASE_URL`, `ADMIN_EMAIL`, `ADMIN_PASSWORD`, `APP_SECRET`.
+5. **Run.** `npm start`, then open http://localhost:3000. Sign in at **/admin-login.html** with your admin email (buyers use `/login.html`). Forgot it? Run `npm run reset-admin -- you@example.com "new-password"`.
 
 Without a Paystack key the shop runs in **demo payment mode**: orders are marked paid without charging anyone. Add `PAYSTACK_SECRET_KEY` before going live (and add `YOUR_URL/api/webhooks/paystack` as the webhook in Paystack).
 
@@ -36,19 +37,19 @@ Summary (key numbers, break-even, month-by-month) · Profit & loss · Balance sh
 
 First-time setup, in this order: (1) Cost prices, (2) Owner & stock → money you started with and any stock you already owned, (3) Tax & settings. The Summary page warns you about anything that makes the figures unreliable (demo payments on, products sold with no cost, books vs. real stock mismatch).
 
-Notes: sales are dated in Nigerian time (UTC+1). Payment fees are *calculated* from your settings, so compare them with your Paystack statement. Tax figures are estimates; check the rates that apply to you with an accountant. Cost prices are stored in the local SQLite file (not in Supabase), so they are covered by your `data/shop.db` backup.
+Notes: sales are dated in Nigerian time (UTC+1). Payment fees are *calculated* from your settings, so compare them with your Paystack statement. Tax figures are estimates; check the rates that apply to you with an accountant. Cost prices are stored in the `product_costs` table in your database.
 
 ## How it works
 
 * **Products and photos** live in Supabase. The server reads them with the service-role key (which never reaches the browser), caches them in memory for 15 seconds and keeps serving the cache if Supabase has a short outage.
-* **Customers, orders, reviews and discount codes** are stored in a local SQLite file (`data/shop.db`). **Back it up**, and on hosts with temporary disks (many free tiers) mount a persistent volume for `data/` or you will lose orders when the app restarts.
+* **Customers, orders, reviews, discount codes, notifications, support requests, settings and accounting records** are stored in Supabase Postgres (set `DATABASE_URL`), so they survive restarts and redeploys on any host. Carts live in the shopper's browser and become an order at checkout. Supabase has its own backups; check your plan. If `DATABASE_URL` is empty the shop falls back to a local SQLite file (`data/shop.db`), which is only suitable for development.
 * **Checkout** re-prices everything on the server, checks stock live in Supabase, and only marks an order paid after Paystack confirms the amount (return page or signed webhook). Paid orders take stock out in Supabase; refunds put it back.
 * There are no subscriptions, plans or seller accounts. There is one shop and one admin.
 
 ## Layout
 
 ```
-server/  accounting.js (double-entry engine) · xlsx.js (Excel writer) · index.js · http.js · config.js · db.js (SQLite) · supa.js (Supabase REST + Storage) · catalog.js (product cache, search)
+server/  accounting.js (double-entry engine) · xlsx.js (Excel writer) · index.js · http.js · config.js · db.js (Supabase Postgres, or SQLite when DATABASE_URL is empty) · supa.js (Supabase REST + Storage) · catalog.js (product cache, search)
          auth.js · paystack.js · mail.js · bootstrap.js · routes/{public,market,shop,admin,accounting}.js
 public/  index.html + js/store.js, store2.js (shop)   admin.html + js/admin.js   login.html / register.html + js/auth.js
          css/styles.css, store.css, cirra.css          js/fx.js (animations)

@@ -13,7 +13,7 @@ const near = (a, b) => Math.abs(a - b) < 0.01;
   const { handle } = require('../server'); const { q } = require('../server/db');
   const app = http.createServer(handle); await new Promise(r => app.listen(0, r)); const base = 'http://localhost:' + app.address().port;
   const call = async (method, p, body, token) => { const res = await fetch(base + p, { method, headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: 'Bearer ' + token } : {}) }, body: body === undefined ? undefined : JSON.stringify(body) }); let j = null; const buf = Buffer.from(await res.arrayBuffer()); try { j = JSON.parse(buf.toString()); } catch {} return { s: res.status, j, buf, h: res.headers }; };
-  const admin = (await call('POST', '/api/auth/login', { email: 'admin@test.local', password: 'admin-pass-123' })).j.token;
+  const admin = (await call('POST', '/api/auth/login', { email: 'admin@test.local', password: 'admin-pass-123', portal: 'admin' })).j.token;
   const cust = (await call('POST', '/api/auth/register', { name: 'Ada Obi', email: 'ada@test.ng', password: 'password1', phone: '0803' })).j.token;
   const today = new Date(Date.now() + 3600e3).toISOString().slice(0, 10);
 
@@ -29,8 +29,8 @@ const near = (a, b) => Math.abs(a - b) < 0.01;
 
   const buy = async items => (await call('POST', '/api/shop/checkout', { name: 'Ada Obi', phone: '0803', email: 'ada@test.ng', method: 'delivery', address: '12 Allen Ave', items }, cust)).j;
   const o1 = await buy([{ product_id: A.id, qty: 2 }, { product_id: B.id, qty: 1 }]), o2 = await buy([{ product_id: B.id, qty: 2 }]); ok(o1.total === 47000 && o2.total === 12000, 'two demo orders placed');
-  const oid2 = q.get('SELECT id FROM orders WHERE reference=?', o2.reference).id;
-  ok(q.all('SELECT unit_cost FROM order_items WHERE order_id=(SELECT id FROM orders WHERE reference=?)', o1.reference).every(i => i.unit_cost > 0), 'cost of goods frozen on each order line at sale time');
+  const oid2 = (await q.get('SELECT id FROM orders WHERE reference=?', o2.reference)).id;
+  ok((await q.all('SELECT unit_cost FROM order_items WHERE order_id=(SELECT id FROM orders WHERE reference=?)', o1.reference)).every(i => i.unit_cost > 0), 'cost of goods frozen on each order line at sale time');
   ok((await call('POST', `/api/admin/orders/${oid2}/refund`, {}, admin)).s === 200, 'second order refunded');
 
   ok((await call('POST', '/api/admin/accounts/expenses', { category: 'rent', amount: 50000, description: 'Shop rent' }, admin)).s === 200, 'expense: rent');
@@ -71,7 +71,7 @@ const near = (a, b) => Math.abs(a - b) < 0.01;
   // profit then tax
   await call('POST', '/api/admin/accounts/money', { kind: 'opening_stock', amount: 1 }, admin);
   const R3 = (await call('GET', '/api/admin/accounts/report?preset=all', undefined, admin)).j; ok(R3.pnl.tax === 0 && R3.balance.difference === 0, 'no tax on a loss');
-  q.run("INSERT INTO orders(reference,customer_name,customer_phone,customer_email,method,subtotal,total,status,paid_at) VALUES('BIG1','x','1','x@t.ng','pickup',1000000,1000000,'completed',datetime('now'))");
+  await q.run("INSERT INTO orders(reference,customer_name,customer_phone,customer_email,method,subtotal,total,status,paid_at) VALUES('BIG1','x','1','x@t.ng','pickup',1000000,1000000,'completed',datetime('now'))");
   const R4 = (await call('GET', '/api/admin/accounts/report?preset=all', undefined, admin)).j; ok(R4.pnl.tax > 0 && near(R4.pnl.tax, R4.pnl.profit_before_tax * 0.3) && R4.balance.difference === 0 && near(R4.balance.liabilities.tax, R4.pnl.tax), 'income tax estimate accrues as a liability and the sheet still balances');
 
   // downloads
