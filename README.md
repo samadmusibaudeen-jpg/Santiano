@@ -65,4 +65,3 @@ scripts/ e2e.js + accounting-test.js (npm test: 65 + 45 checks against a mock Su
 * HTTPS, a long random `APP_SECRET`, a strong `ADMIN_PASSWORD`, `PAYSTACK_SECRET_KEY` set (use an `sk_test_` key first).
 * Set `RESEND_API_KEY` for order emails, otherwise they are only logged.
 * Paystack and Supabase calls are verified here against mocks only, not the live services. Do one real test order and one real photo upload before announcing.
-"# Santiano" 
